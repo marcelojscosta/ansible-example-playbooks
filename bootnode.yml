@@ -1,0 +1,82 @@
+# bootnode.yml
+
+---
+- hosts: donodes #Digital Ocean Nodes
+  vars:
+    # crypted passwords, generated on a Linux box using:
+    # echo 'import crypt,getpass; print crypt.crypt(getpass.getpass(), "$6$YOURSALT")' | python -
+  - root_password: '<my password>'
+
+  tasks:
+
+  #- include: tasks/setup-apt.yml
+  - include: setup-apt.yml
+
+  - name: Change root password
+    action: user name=root password=$root_password
+
+  - name: Update APT package cache
+    action: apt update_cache=yes
+
+  - name: Upgrade APT to the lastest packages
+    action: apt upgrade=safe
+
+  - name: Install dependencies
+    apt: name={{ item }} state=present
+    with_items:
+      - psmisc
+      - lighttpd
+      - vim
+      - zip
+      - lynx
+      - unzip
+      - php5-pgsql
+      - libmagickwand-dev
+      - screen
+      - rcconf
+      - php5-imagick
+      - libsndfile1
+      - mpg123
+      - php5-curl
+      - php5-cli
+      - git
+      - php5-cgi
+      - make
+      - g++
+      - libsndfile1-dev
+      - libpng++-dev
+      - libpng12-dev
+      - libboost-program-options-dev
+      - htop
+      - locate
+
+# Only to undestand, <directory> is the full path of my directory where I omitted for my safety
+
+  - name: create sites directory on /<directory>
+    action: command mkdir -p /<directory>/sites creates=/<directory>/sites
+
+  - name: Copy .bashrc file to nodes
+    copy: src=config/.bashrc  dest=/root/
+
+  - name: Update crontab to run clearC.sh once in 10 minutes
+    cron: name="clearC execution" weekday="*" minute="10" hour="*" month="*" user="root" job="sh /<directory>/script_cron/clearC.sh" cron_file=clearC
+    tags:
+      - cron
+
+
+  - name: Copy 10-fastcgi.conf file to nodes
+    copy: src=lighttpd_conf/10-fastcgi.conf  dest=/etc/lighttpd/conf-enabled/
+
+  - name: Copy lighttpd.conf file to nodes
+    copy: src=lighttpd_conf/lighttpd.conf    dest=/etc/lighttpd/
+
+  - name: Recursively copy the sites folder via rsync to /<directory>/sites on nodes
+    local_action: shell rsync -av -e "ssh"  /<directory>/sites/  root@$inventory_hostname:/<directory>/sites/
+    sudo: False
+
+  - name: Change ownership of sites directory to www-data
+    file: path=/<directory>/sites owner=www-data group=www-data state=directory recurse=yes
+
+  handlers:
+  - name: restart lighttpd
+    action:  service name=lighttpd state=restarted
